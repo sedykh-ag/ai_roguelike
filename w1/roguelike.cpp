@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include "stateMachine.h"
 #include "aiLibrary.h"
+#include "log.h"
 
 static void add_patrol_attack_flee_sm(flecs::entity entity)
 {
@@ -44,6 +45,21 @@ static void add_attack_sm(flecs::entity entity)
   });
 }
 
+static void add_archer_sm(flecs::entity entity)
+{
+  entity.get([](StateMachine &sm)
+  {
+    int moveToEnemy = sm.addState(create_move_to_enemy_state());
+    int shootEnemy = sm.addState(create_attack_enemy_state());
+    int fleeFromEnemy = sm.addState(create_flee_from_enemy_state());
+
+    sm.addTransition(create_enemy_available_transition(5.f), moveToEnemy, shootEnemy);
+    sm.addTransition(create_negate_transition(create_enemy_available_transition(5.f)), shootEnemy, moveToEnemy);
+    sm.addTransition(create_enemy_available_transition(3.f), shootEnemy, fleeFromEnemy);
+    sm.addTransition(create_negate_transition(create_enemy_available_transition(7.f)), fleeFromEnemy, moveToEnemy);
+  });
+}
+
 static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color color)
 {
   return ecs.entity()
@@ -57,6 +73,23 @@ static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color color
     .set(Team{1})
     .set(NumActions{1, 0})
     .set(MeleeDamage{20.f});
+}
+
+static flecs::entity create_archer(flecs::world &ecs, int x, int y, Color color)
+{
+  return ecs.entity()
+    .set(Position{x, y})
+    .set(MovePos{x, y})
+    .set(PatrolPos{x, y})
+    .set(Hitpoints{100.f})
+    .set(Action{EA_NOP})
+    .set(Color{color})
+    .set(StateMachine{})
+    .set(Team{1})
+    .set(NumActions{1, 0})
+    .set(MeleeDamage{0.f})
+    .set(RangedDamage{10.f})
+    .set(RangedAttackRange{5.f});
 }
 
 static void create_player(flecs::world &ecs, int x, int y)
@@ -135,18 +168,20 @@ void init_roguelike(flecs::world &ecs)
 {
   register_roguelike_systems(ecs);
 
-  add_patrol_attack_flee_sm(create_monster(ecs, 5, 5, GetColor(0xee00eeff)));
-  add_patrol_attack_flee_sm(create_monster(ecs, 10, -5, GetColor(0xee00eeff)));
-  add_patrol_flee_sm(create_monster(ecs, -5, -5, GetColor(0x111111ff)));
-  add_attack_sm(create_monster(ecs, -5, 5, GetColor(0x880000ff)));
+  // add_patrol_attack_flee_sm(create_monster(ecs, 5, 5, GetColor(0xee00eeff)));
+  // add_patrol_attack_flee_sm(create_monster(ecs, 10, -5, GetColor(0xee00eeff)));
+  // add_patrol_flee_sm(create_monster(ecs, -5, -5, GetColor(0x111111ff)));
+  // add_attack_sm(create_monster(ecs, -5, 5, GetColor(0x880000ff)));
+
+  add_archer_sm(create_archer(ecs, 5, 5, GetColor(0xee00eeff)));
 
   create_player(ecs, 0, 0);
 
   create_powerup(ecs, 7, 7, 10.f);
-  create_powerup(ecs, 10, -6, 10.f);
-  create_powerup(ecs, 10, -4, 10.f);
+  // create_powerup(ecs, 10, -6, 10.f);
+  // create_powerup(ecs, 10, -4, 10.f);
 
-  create_heal(ecs, -5, -5, 50.f);
+  // create_heal(ecs, -5, -5, 50.f);
   create_heal(ecs, -5, 5, 50.f);
 }
 
@@ -212,11 +247,34 @@ static void process_actions(flecs::world &ecs)
         mpos = nextPos;
     });
     // now move
-    processActions.each([&](flecs::entity entity, Action &a, Position &pos, MovePos &mpos, const MeleeDamage &, const Team&)
+    processActions.each([&](flecs::entity, Action &, Position &pos, MovePos &mpos, const MeleeDamage &, const Team&)
     {
       pos = mpos;
-      a.action = EA_NOP;
     });
+  });
+
+  // ranged attacks
+  static auto enemiesQuery = ecs.query<const Position, const Team, Hitpoints>();
+  static auto rangedAttacksQuery = ecs.query<const RangedDamage, const RangedAttackRange, const Action, const Team, const Position>();
+  ecs.defer([&]
+  {
+    rangedAttacksQuery
+      .each([&](const RangedDamage dmg, const RangedAttackRange range, const Action action, const Team team, const Position& pos)
+      {
+        if (action.action != EA_ATTACK)
+          return;
+
+        enemiesQuery.each([&](const Position& enemy_pos, const Team enemy_team, Hitpoints &enemy_hp)
+        {
+          if (team.team == enemy_team.team)
+            return; // it is an ally
+
+          if (dist(pos, enemy_pos) > range.range)
+            return; // out of range
+
+          enemy_hp.hitpoints -= dmg.damage;
+        });
+      });
   });
 
   static auto deleteAllDead = ecs.query<const Hitpoints>();
@@ -252,6 +310,15 @@ static void process_actions(flecs::world &ecs)
           entity.destruct();
         }
       });
+    });
+  });
+
+  // finish all actions
+  ecs.defer([&]
+  {
+    processActions.each([&](flecs::entity, Action &a, Position &, MovePos &, const MeleeDamage &, const Team&)
+    {
+      a.action = EA_NOP;
     });
   });
 }

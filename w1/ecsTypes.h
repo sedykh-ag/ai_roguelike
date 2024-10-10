@@ -59,7 +59,7 @@ enum Actions
   EA_MOVE_DOWN,
   EA_MOVE_UP,
   EA_MOVE_END,
-  EA_ATTACK = EA_MOVE_END,
+  EA_ATTACK,
   EA_NUM
 };
 
@@ -77,6 +77,16 @@ struct NumActions
 struct MeleeDamage
 {
   float damage = 2.f;
+};
+
+struct RangedDamage
+{
+  float damage = 10.f;
+};
+
+struct RangedAttackRange
+{
+  float range = 5.f;
 };
 
 struct HealAmount

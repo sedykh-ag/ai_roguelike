@@ -2,6 +2,7 @@
 #include <flecs.h>
 #include "ecsTypes.h"
 #include "raylib.h"
+#include "log.h"
 #include <cfloat>
 #include <cmath>
 
@@ -10,17 +11,14 @@ class AttackEnemyState : public State
 public:
   void enter() const override {}
   void exit() const override {}
-  void act(float/* dt*/, flecs::world &/*ecs*/, flecs::entity /*entity*/) const override {}
+  void act(float/* dt*/, flecs::world &/*ecs*/, flecs::entity entity) const override
+  {
+    entity.insert([&](Action &a)
+    {
+      a.action = EA_ATTACK;
+    });
+  }
 };
-
-template<typename T>
-T sqr(T a){ return a*a; }
-
-template<typename T, typename U>
-static float dist_sq(const T &lhs, const U &rhs) { return float(sqr(lhs.x - rhs.x) + sqr(lhs.y - rhs.y)); }
-
-template<typename T, typename U>
-static float dist(const T &lhs, const U &rhs) { return sqrtf(dist_sq(lhs, rhs)); }
 
 template<typename T, typename U>
 static int move_towards(const T &from, const U &to)
