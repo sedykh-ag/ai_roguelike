@@ -79,6 +79,39 @@ public:
   }
 };
 
+class MoveToPlayerState : public State
+{
+public:
+  void enter() const override {}
+  void exit() const override {}
+  void act(float /* dt */, flecs::world &ecs, flecs::entity entity) const override
+  {
+    static auto playerQuery = ecs.query<const IsPlayer, const Position>();
+    entity.insert([&](Action &a, const Position &pos)
+    {
+      playerQuery.each([&](const IsPlayer, const Position& player_pos)
+      {
+        a.action = move_towards(pos, player_pos);
+      });
+    });
+  }
+};
+
+class HealingState : public State
+{
+public:
+  void enter() const override {}
+  void exit() const override {}
+  void act(float /* dt */, flecs::world &ecs, flecs::entity entity) const override
+  {
+    debug("healing...");
+    entity.insert([](Action &a)
+    {
+      a.action = EA_HEAL;
+    });
+  }
+};
+
 class FleeFromEnemyState : public State
 {
 public:
@@ -147,6 +180,33 @@ public:
   }
 };
 
+class AllyAvailableTransition : public StateTransition
+{
+  float triggerDist;
+public:
+  AllyAvailableTransition(float in_dist) : triggerDist(in_dist) {}
+  bool isAvailable(flecs::world &ecs, flecs::entity entity) const override
+  {
+    static auto alliesQuery = ecs.query<const Position, const Team>();
+    bool alliesFound = false;
+    entity.get([&](const Position &pos, const Team &t)
+    {
+      alliesQuery.each([&](flecs::entity ally, const Position &apos, const Team at)
+      {
+        if (ally == entity)
+          return;
+
+        if (t.team != at.team)
+          return;
+        float curDist = dist(apos, pos);
+        debug("dist = %f", curDist);
+        alliesFound |= curDist <= triggerDist;
+      });
+    });
+    return alliesFound;
+  }
+};
+
 class HitpointsLessThanTransition : public StateTransition
 {
   float threshold;
@@ -159,6 +219,25 @@ public:
     {
       hitpointsThresholdReached |= hp.hitpoints < threshold;
     });
+    return hitpointsThresholdReached;
+  }
+};
+
+class PlayerHitpointsLessThanTransition : public StateTransition
+{
+  float threshold;
+public:
+  PlayerHitpointsLessThanTransition(float in_thres) : threshold(in_thres) {}
+  bool isAvailable(flecs::world &ecs, flecs::entity entity) const override
+  {
+    bool hitpointsThresholdReached = false;
+
+    ecs.query<const IsPlayer, const Hitpoints>()
+      .each([&](const IsPlayer, const Hitpoints hp)
+    {
+      hitpointsThresholdReached |= hp.hitpoints < threshold;
+    });
+
     return hitpointsThresholdReached;
   }
 };
@@ -214,6 +293,16 @@ State *create_move_to_enemy_state()
   return new MoveToEnemyState();
 }
 
+State *create_move_to_player_state()
+{
+  return new MoveToPlayerState();
+}
+
+State *create_healing_state()
+{
+  return new HealingState();
+}
+
 State *create_flee_from_enemy_state()
 {
   return new FleeFromEnemyState();
@@ -236,6 +325,11 @@ StateTransition *create_enemy_available_transition(float dist)
   return new EnemyAvailableTransition(dist);
 }
 
+StateTransition *create_ally_available_transition(float dist)
+{
+  return new AllyAvailableTransition(dist);
+}
+
 StateTransition *create_enemy_reachable_transition()
 {
   return new EnemyReachableTransition();
@@ -244,6 +338,11 @@ StateTransition *create_enemy_reachable_transition()
 StateTransition *create_hitpoints_less_than_transition(float thres)
 {
   return new HitpointsLessThanTransition(thres);
+}
+
+StateTransition *create_player_hitpoints_less_than_transition(float thres)
+{
+  return new PlayerHitpointsLessThanTransition(thres);
 }
 
 StateTransition *create_negate_transition(StateTransition *in)

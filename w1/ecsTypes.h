@@ -60,6 +60,7 @@ enum Actions
   EA_MOVE_UP,
   EA_MOVE_END,
   EA_ATTACK,
+  EA_HEAL,
   EA_NUM
 };
 
@@ -94,6 +95,17 @@ struct HealAmount
   float amount = 0.f;
 };
 
+struct HealRange
+{
+  float range = 1.f;
+};
+
+struct HealCooldown
+{
+  int current = 10;
+  int cooldown = 10;
+};
+
 struct PowerupAmount
 {
   float amount = 0.f;
@@ -113,6 +125,10 @@ struct Symbol
 };
 
 struct IsPlayer {};
+
+struct IsMob {};
+
+struct IsPickup {};
 
 struct Team
 {
