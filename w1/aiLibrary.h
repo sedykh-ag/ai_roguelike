@@ -2,7 +2,11 @@
 
 #include "stateMachine.h"
 
+// state machines
+StateMachine *create_state_machine();
+
 // states
+State *create_sm_state(StateMachine *sm);
 State *create_attack_enemy_state();
 State *create_move_to_enemy_state();
 State *create_move_to_player_state();

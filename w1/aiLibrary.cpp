@@ -20,6 +20,22 @@ public:
   }
 };
 
+class SMState : public State
+{
+  StateMachine *sm; // we own it
+public:
+  SMState(StateMachine *sm) : sm(sm) {}
+
+  ~SMState() { delete sm; }
+
+  void enter() const override {}
+  void exit() const override {}
+  void act(float dt, flecs::world &ecs, flecs::entity entity) const override
+  {
+    sm->act(dt, ecs, entity);
+  }
+};
+
 template<typename T, typename U>
 static int move_towards(const T &from, const U &to)
 {
@@ -282,8 +298,18 @@ public:
   }
 };
 
+// state machines
+StateMachine *create_state_machine()
+{
+  return new StateMachine();
+}
 
 // states
+State *create_sm_state(StateMachine *sm)
+{
+  return new SMState(sm);
+}
+
 State *create_attack_enemy_state()
 {
   return new AttackEnemyState();
