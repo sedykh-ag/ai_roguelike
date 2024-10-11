@@ -228,7 +228,6 @@ public:
         if (t.team != at.team)
           return;
         float curDist = dist(apos, pos);
-        debug("dist = %f", curDist);
         alliesFound |= curDist <= triggerDist;
       });
     });
