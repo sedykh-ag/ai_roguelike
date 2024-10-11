@@ -143,6 +143,19 @@ public:
   }
 };
 
+class SpawnSlimeState : public State
+{
+public:
+  void enter() const override {}
+  void exit() const override {}
+  void act(float/* dt*/, flecs::world &ecs, flecs::entity entity) const override
+  {
+    entity.insert([](Action &a){
+      a.action = EA_SPAWN;
+    });
+  }
+};
+
 class PatrolState : public State
 {
   float patrolDist;
@@ -298,6 +311,15 @@ public:
   }
 };
 
+class AlwaysTransition : public StateTransition
+{
+public:
+  bool isAvailable(flecs::world &ecs, flecs::entity entity) const override
+  {
+    return true;
+  }
+};
+
 // state machines
 StateMachine *create_state_machine()
 {
@@ -345,6 +367,11 @@ State *create_nop_state()
   return new NopState();
 }
 
+State *create_spawn_slime_state()
+{
+  return new SpawnSlimeState();
+}
+
 // transitions
 StateTransition *create_enemy_available_transition(float dist)
 {
@@ -380,3 +407,7 @@ StateTransition *create_and_transition(StateTransition *lhs, StateTransition *rh
   return new AndTransition(lhs, rhs);
 }
 
+StateTransition *create_always_transition()
+{
+  return new AlwaysTransition();
+}

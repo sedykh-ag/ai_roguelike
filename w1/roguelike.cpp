@@ -5,9 +5,30 @@
 #include "aiLibrary.h"
 #include "log.h"
 
+static StateMachine *create_patrol_attack_flee_sm()
+{
+  StateMachine *sm = create_state_machine();
+
+  int patrol = sm->addState(create_patrol_state(3.f));
+  int moveToEnemy = sm->addState(create_move_to_enemy_state());
+  int fleeFromEnemy = sm->addState(create_flee_from_enemy_state());
+
+  sm->addTransition(create_enemy_available_transition(3.f), patrol, moveToEnemy);
+  sm->addTransition(create_negate_transition(create_enemy_available_transition(5.f)), moveToEnemy, patrol);
+
+  sm->addTransition(create_and_transition(create_hitpoints_less_than_transition(60.f), create_enemy_available_transition(5.f)),
+                    moveToEnemy, fleeFromEnemy);
+  sm->addTransition(create_and_transition(create_hitpoints_less_than_transition(60.f), create_enemy_available_transition(3.f)),
+                    patrol, fleeFromEnemy);
+
+  sm->addTransition(create_negate_transition(create_enemy_available_transition(7.f)), fleeFromEnemy, patrol);
+
+  return sm;
+}
+
 static void add_patrol_attack_flee_sm(flecs::entity entity)
 {
-  entity.get([](StateMachine &sm)
+  entity.insert([](StateMachine &sm)
   {
     int patrol = sm.addState(create_patrol_state(3.f));
     int moveToEnemy = sm.addState(create_move_to_enemy_state());
@@ -27,7 +48,7 @@ static void add_patrol_attack_flee_sm(flecs::entity entity)
 
 static void add_patrol_flee_sm(flecs::entity entity)
 {
-  entity.get([](StateMachine &sm)
+  entity.insert([](StateMachine &sm)
   {
     int patrol = sm.addState(create_patrol_state(3.f));
     int fleeFromEnemy = sm.addState(create_flee_from_enemy_state());
@@ -39,15 +60,31 @@ static void add_patrol_flee_sm(flecs::entity entity)
 
 static void add_attack_sm(flecs::entity entity)
 {
-  entity.get([](StateMachine &sm)
+  entity.insert([](StateMachine &sm)
   {
     sm.addState(create_move_to_enemy_state());
   });
 }
 
+static void add_slime_sm(flecs::entity entity, bool isSmall)
+{
+  entity.insert([&](StateMachine &sm)
+  {
+    int bigSlimeState = sm.addState(create_sm_state(create_patrol_attack_flee_sm()));
+    int smallSlimeState = sm.addState(create_sm_state(create_patrol_attack_flee_sm()));
+    int spawnSlimeState = sm.addState(create_spawn_slime_state());
+
+    sm.addTransition(create_hitpoints_less_than_transition(50.f), bigSlimeState, spawnSlimeState);
+    sm.addTransition(create_always_transition(), spawnSlimeState, smallSlimeState);
+
+    if (isSmall)
+      sm.switchState(smallSlimeState);
+  });
+}
+
 static void add_archer_sm(flecs::entity entity)
 {
-  entity.get([](StateMachine &sm)
+  entity.insert([](StateMachine &sm)
   {
     int moveToEnemy = sm.addState(create_move_to_enemy_state());
     int shootEnemy = sm.addState(create_attack_enemy_state());
@@ -62,7 +99,7 @@ static void add_archer_sm(flecs::entity entity)
 
 static void add_healer_sm(flecs::entity entity)
 {
-  entity.get([](StateMachine &sm)
+  entity.insert([](StateMachine &sm)
   {
     int moveToPlayer = sm.addState(create_move_to_player_state());
     int moveToEnemy = sm.addState(create_move_to_enemy_state());
@@ -91,7 +128,25 @@ static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color color
     .set(Team{1})
     .set(NumActions{1, 0})
     .set(MeleeDamage{20.f})
-    .add<IsMob>();
+    .add<IsMob>()
+    .set(MobType{MOB_HUMAN});
+}
+
+static flecs::entity create_slime(flecs::world &ecs, int x, int y, Color color)
+{
+  return ecs.entity()
+    .set(Position{x, y})
+    .set(MovePos{x, y})
+    .set(PatrolPos{x, y})
+    .set(Hitpoints{80.f})
+    .set(Action{EA_NOP})
+    .set(Color{color})
+    .set(StateMachine{})
+    .set(Team{1})
+    .set(NumActions{1, 0})
+    .set(MeleeDamage{10.f})
+    .add<IsMob>()
+    .set(MobType{MOB_SLIME});
 }
 
 static flecs::entity create_archer(flecs::world &ecs, int x, int y, Color color)
@@ -109,7 +164,8 @@ static flecs::entity create_archer(flecs::world &ecs, int x, int y, Color color)
     .set(MeleeDamage{0.f})
     .set(RangedDamage{10.f})
     .set(RangedAttackRange{5.f})
-    .add<IsMob>();
+    .add<IsMob>()
+    .set(MobType{MOB_ARCHER});
 }
 
 static flecs::entity create_healer(flecs::world &ecs, int x, int y, Color color)
@@ -128,7 +184,8 @@ static flecs::entity create_healer(flecs::world &ecs, int x, int y, Color color)
     .set(HealAmount{15.f})
     .set(HealRange{1.f})
     .set(HealCooldown{5, 5})
-    .add<IsMob>();
+    .add<IsMob>()
+    .set(MobType{MOB_HEALER});
 }
 
 static void create_player(flecs::world &ecs, int x, int y)
@@ -213,10 +270,11 @@ void init_roguelike(flecs::world &ecs)
   // add_patrol_attack_flee_sm(create_monster(ecs, 5, 5, GetColor(0xee00eeff)));
   // add_patrol_attack_flee_sm(create_monster(ecs, 10, -5, GetColor(0xee00eeff)));
   // add_patrol_flee_sm(create_monster(ecs, -5, -5, GetColor(0x111111ff)));
-  add_attack_sm(create_monster(ecs, -5, 5, GetColor(0x880000ff)));
+  // add_attack_sm(create_monster(ecs, -5, 5, GetColor(0x880000ff)));
 
   add_archer_sm(create_archer(ecs, -5, -10, GetColor(0xee00eeff)));
   add_healer_sm(create_healer(ecs, 3, 3, GetColor(0x00ee00ff)));
+  add_slime_sm(create_slime(ecs, -3, -3, GetColor(0x0000eeff)), /*isSmall*/ false);
 
   create_player(ecs, 0, 0);
 
@@ -348,6 +406,22 @@ static void process_actions(flecs::world &ecs)
           enemy_hp.hitpoints -= dmg.damage;
         });
       });
+  });
+
+  // spawning slimes
+  static auto slimesQuery = ecs.query<const MobType, const Action, const Position>();
+  ecs.defer([&]
+  {
+    slimesQuery.each([&](const MobType mob_type, const Action action, const Position &pos)
+    {
+      if (mob_type.type != MOB_SLIME)
+        return;
+
+      if (action.action != EA_SPAWN)
+        return;
+
+      add_slime_sm(create_slime(ecs, pos.x - 1, pos.y - 1, GetColor(0x0000eeff)), /*isSmall*/ true);
+    });
   });
 
   static auto deleteAllDead = ecs.query<const Hitpoints>();

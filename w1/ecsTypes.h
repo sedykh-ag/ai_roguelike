@@ -61,7 +61,16 @@ enum Actions
   EA_MOVE_END,
   EA_ATTACK,
   EA_HEAL,
+  EA_SPAWN,
   EA_NUM
+};
+
+enum Mobs
+{
+  MOB_HUMAN = 0,
+  MOB_SLIME,
+  MOB_ARCHER,
+  MOB_HEALER
 };
 
 struct Action
@@ -129,6 +138,11 @@ struct IsPlayer {};
 struct IsMob {};
 
 struct IsPickup {};
+
+struct MobType
+{
+  unsigned type = MOB_HUMAN;
+};
 
 struct Team
 {
