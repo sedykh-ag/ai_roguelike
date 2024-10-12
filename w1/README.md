@@ -6,3 +6,6 @@
 
 **Healer**
 ![healer](img/healer.png "Healer")
+
+**Crafter**
+![crafter](img/crafter.png "Crafter")
