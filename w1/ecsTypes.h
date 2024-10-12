@@ -45,6 +45,45 @@ struct PatrolPos
   int y = 0;
 };
 
+struct EatPos
+{
+  int x = 0;
+  int y = 0;
+};
+
+struct CraftPos
+{
+  int x = 0;
+  int y = 0;
+};
+
+struct BuyPos
+{
+  int x = 0;
+  int y = 0;
+};
+
+struct SellPos
+{
+  int x = 0;
+  int y = 0;
+};
+
+struct SleepPos
+{
+  int x = 0;
+  int y = 0;
+};
+
+struct CrafterPoses
+{
+  BuyPos buy;
+  SellPos sell;
+  CraftPos craft;
+  EatPos eat;
+  SleepPos sleep;
+};
+
 struct Hitpoints
 {
   float hitpoints = 10.f;
@@ -70,7 +109,9 @@ enum Mobs
   MOB_HUMAN = 0,
   MOB_SLIME,
   MOB_ARCHER,
-  MOB_HEALER
+  MOB_HEALER,
+  MOB_CRAFTER,
+  MOB_NUM
 };
 
 struct Action
@@ -113,6 +154,18 @@ struct HealCooldown
 {
   int current = 10;
   int cooldown = 10;
+};
+
+struct Hunger
+{
+  int current = 0;
+  int max = 5;
+};
+
+struct Fatigue
+{
+  int current = 0;
+  int max = 10;
 };
 
 struct PowerupAmount

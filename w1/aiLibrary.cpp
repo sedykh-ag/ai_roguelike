@@ -28,7 +28,10 @@ public:
 
   ~SMState() { delete sm; }
 
-  void enter() const override {}
+  void enter() const override
+  {
+    sm->switchState(0);
+  }
   void exit() const override {}
   void act(float dt, flecs::world &ecs, flecs::entity entity) const override
   {
@@ -178,12 +181,100 @@ public:
   }
 };
 
+class GoToState : public State
+{
+  int x, y;
+public:
+  GoToState(int x, int y) : x(x), y(y) {}
+  void enter() const override {}
+  void exit() const override {}
+  void act(float dt, flecs::world &ecs, flecs::entity entity) const override
+  {
+    entity.insert([&](const Position &pos, Action &a)
+    {
+      a.action = move_towards(pos, Position{x, y});
+    });
+  }
+};
+
+class EatState : public State
+{
+public:
+  void enter() const override {}
+  void exit() const override {}
+  void act(float dt, flecs::world &ecs, flecs::entity entity) const override
+  {
+    if (!entity.has<Hunger>())
+      return;
+
+    entity.insert([](Hunger &hunger)
+    {
+      debug("eating...");
+      hunger.current = 0;
+    });
+  }
+};
+
+class SleepState : public State
+{
+public:
+  void enter() const override {}
+  void exit() const override {}
+  void act(float dt, flecs::world &ecs, flecs::entity entity) const override
+  {
+    if (!entity.has<Fatigue>())
+      return;
+
+    entity.insert([](Fatigue &fatigue)
+    {
+      debug("sleeping...");
+      fatigue.current = 0;
+    });
+  }
+};
+
 class NopState : public State
 {
 public:
   void enter() const override {}
   void exit() const override {}
   void act(float/* dt*/, flecs::world &ecs, flecs::entity entity) const override {}
+};
+
+class DistToPosTransition : public StateTransition
+{
+  float triggerDist;
+  int x, y;
+public:
+  DistToPosTransition(float triggerDist, int x, int y)
+    : triggerDist(triggerDist), x(x), y(y) {}
+  bool isAvailable(flecs::world &ecs, flecs::entity entity) const override
+  {
+    bool reached = false;
+    entity.get([&](const Position &pos)
+    {
+      float curDist = dist(Position{x, y}, pos);
+      reached |= curDist <= triggerDist;
+    });
+    return reached;
+  }
+};
+
+template <typename Component>
+class ComponentLessThanTransition : public StateTransition
+{
+  int threshold;
+public:
+  ComponentLessThanTransition(int threshold) : threshold(threshold) {}
+  bool isAvailable(flecs::world &ecs, flecs::entity entity) const override
+  {
+    bool reached = false;
+    entity.get([&](const Component &comp)
+    {
+      reached |= comp.current <= threshold;
+    });
+    return reached;
+  }
 };
 
 class EnemyAvailableTransition : public StateTransition
@@ -331,6 +422,21 @@ State *create_sm_state(StateMachine *sm)
   return new SMState(sm);
 }
 
+State *create_go_to_state(int x, int y)
+{
+  return new GoToState(x, y);
+}
+
+State *create_eat_state()
+{
+  return new EatState();
+}
+
+State *create_sleep_state()
+{
+  return new SleepState();
+}
+
 State *create_attack_enemy_state()
 {
   return new AttackEnemyState();
@@ -372,6 +478,25 @@ State *create_spawn_slime_state()
 }
 
 // transitions
+StateTransition *create_hunger_more_than_transition(int threshold)
+{
+  return create_negate_transition(
+    new ComponentLessThanTransition<Hunger>(threshold)
+  );
+}
+
+StateTransition *create_fatigue_more_than_transition(int threshold)
+{
+  return create_negate_transition(
+    new ComponentLessThanTransition<Fatigue>(threshold)
+  );
+}
+
+StateTransition *create_dist_to_pos_transition(float dist, int x, int y)
+{
+  return new DistToPosTransition(dist, x, y);
+}
+
 StateTransition *create_enemy_available_transition(float dist)
 {
   return new EnemyAvailableTransition(dist);

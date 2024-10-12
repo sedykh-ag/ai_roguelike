@@ -115,6 +115,75 @@ static void add_healer_sm(flecs::entity entity)
   });
 }
 
+static void add_crafter_sm(flecs::entity entity)
+{
+  entity.insert([&](StateMachine &sm, const CrafterPoses &poses)
+  {
+    // eat SM
+    StateMachine *eat_sm = create_state_machine();
+    {
+      // states
+      int goToEat = eat_sm->addState(create_go_to_state(poses.eat.x, poses.eat.y));
+      int eat = eat_sm->addState(create_eat_state());
+
+      // transitions
+      eat_sm->addTransition(create_dist_to_pos_transition(FLT_EPSILON, poses.eat.x, poses.eat.y), goToEat, eat);
+    }
+    // buy, craft, sell SM
+    StateMachine *buySellCraft_sm = create_state_machine();
+    {
+      // states
+      int goToBuy = buySellCraft_sm->addState(create_go_to_state(poses.buy.x, poses.buy.y));
+      int goToSell = buySellCraft_sm->addState(create_go_to_state(poses.sell.x, poses.sell.y));
+      int goToCraft = buySellCraft_sm->addState(create_go_to_state(poses.craft.x, poses.craft.y));
+      int buy = buySellCraft_sm->addState(create_nop_state());
+      int sell = buySellCraft_sm->addState(create_nop_state());
+      int craft = buySellCraft_sm->addState(create_nop_state());
+
+      // transitions
+      buySellCraft_sm->addTransition(create_dist_to_pos_transition(FLT_EPSILON, poses.buy.x, poses.buy.y), goToBuy, buy);
+      buySellCraft_sm->addTransition(create_always_transition(), buy, goToCraft);
+      buySellCraft_sm->addTransition(create_dist_to_pos_transition(FLT_EPSILON, poses.craft.x, poses.craft.y), goToCraft, craft);
+      buySellCraft_sm->addTransition(create_always_transition(), craft, goToSell);
+      buySellCraft_sm->addTransition(create_dist_to_pos_transition(FLT_EPSILON, poses.sell.x, poses.sell.y), goToSell, sell);
+      buySellCraft_sm->addTransition(create_always_transition(), sell, goToBuy);
+    }
+    // sleep SM
+    StateMachine *sleep_sm = create_state_machine();
+    {
+      // states
+      int goToSleep = sleep_sm->addState(create_go_to_state(poses.sleep.x, poses.sleep.y));
+      int sleep = sleep_sm->addState(create_sleep_state());
+
+      // transitions
+      sleep_sm->addTransition(create_dist_to_pos_transition(FLT_EPSILON, poses.sleep.x, poses.sleep.y), goToSleep, sleep);
+    }
+    // main (hierarchical) SM
+    {
+      // states
+      int buySellCraft = sm.addState(create_sm_state(buySellCraft_sm));
+      int eat = sm.addState(create_sm_state(eat_sm));
+      int sleep = sm.addState(create_sm_state(sleep_sm));
+
+      // transitions
+      int hungerThreshold = entity.get<Hunger>()->max;
+      int fatigueThreshold = entity.get<Fatigue>()->max;
+
+      sm.addTransition(create_hunger_more_than_transition(hungerThreshold),
+        buySellCraft, eat);
+      sm.addTransition(create_negate_transition(create_hunger_more_than_transition(hungerThreshold)),
+        eat, buySellCraft);
+      sm.addTransition(create_fatigue_more_than_transition(fatigueThreshold),
+        buySellCraft, sleep);
+      sm.addTransition(create_negate_transition(create_fatigue_more_than_transition(fatigueThreshold)),
+        sleep, buySellCraft);
+
+      sm.addTransition(create_hunger_more_than_transition(hungerThreshold),
+        sleep, eat);
+    }
+  });
+}
+
 static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color color)
 {
   return ecs.entity()
@@ -204,6 +273,25 @@ static void create_player(flecs::world &ecs, int x, int y)
     .add<IsMob>();
 }
 
+static flecs::entity create_crafter(flecs::world &ecs, int x, int y, CrafterPoses crafterPoses)
+{
+  return ecs.entity("crafter")
+    .set(Position{x, y})
+    .set(MovePos{x, y})
+    .set(CrafterPoses{crafterPoses})
+    .set(Hitpoints{1000.f})
+    .set(GetColor(0x111111ff))
+    .set(Action{EA_NOP})
+    .set(StateMachine{})
+    .set(Team{0})
+    .set(NumActions{1, 0})
+    .set(MeleeDamage{50.f})
+    .add<IsMob>()
+    .set(MobType{MOB_CRAFTER})
+    .set(Hunger{0, 50}) // triggers eat SM
+    .set(Fatigue{0, 200}); // triggers sleep SM
+}
+
 static void create_heal(flecs::world &ecs, int x, int y, float amount)
 {
   ecs.entity()
@@ -278,12 +366,25 @@ void init_roguelike(flecs::world &ecs)
 
   create_player(ecs, 0, 0);
 
-  create_powerup(ecs, 7, 7, 10.f);
-  // create_powerup(ecs, 10, -6, 10.f);
-  // create_powerup(ecs, 10, -4, 10.f);
+  // crafter
+  CrafterPoses crafterPoses{
+    .buy{10, 3},
+    .sell{16, 3},
+    .craft{13, 7},
 
-  // create_heal(ecs, -5, -5, 50.f);
-  create_heal(ecs, -5, 5, 50.f);
+    .eat{10, 11},
+    .sleep{16, 11}
+  };
+
+  add_crafter_sm(create_crafter(ecs, 11, 5, crafterPoses));
+
+  create_powerup(ecs, 10, 3, 10.f); // buy
+  create_powerup(ecs, 16, 3, 10.f); // sell
+  create_powerup(ecs, 13, 7, 50.f); // craft
+
+  create_heal(ecs, 10, 11, 50.f); // eat
+
+  create_heal(ecs, 16, 11, 10.f); // sleep
 }
 
 static bool is_player_acted(flecs::world &ecs)
@@ -434,6 +535,8 @@ static void process_actions(flecs::world &ecs)
     });
   });
 
+
+  // pickups system
   static auto playerPickup = ecs.query<const IsPlayer, const Position, Hitpoints, MeleeDamage>();
   static auto healPickup = ecs.query<const IsPickup, const Position, const HealAmount>();
   static auto powerupPickup = ecs.query<const IsPickup, const Position, const PowerupAmount>();
@@ -457,6 +560,30 @@ static void process_actions(flecs::world &ecs)
           entity.destruct();
         }
       });
+    });
+  });
+
+  // fatigue system
+  static auto fatigueQuery = ecs.query<Fatigue>();
+  ecs.defer([&]
+  {
+    fatigueQuery.each([](flecs::entity entity, Fatigue &fatigue)
+    {
+      fatigue.current += 1;
+      if (fatigue.current > fatigue.max)
+        debug("%s is sleepy", entity.name().c_str());
+    });
+  });
+
+  // hunger system
+  static auto hungerQuery = ecs.query<Hunger>();
+  ecs.defer([&]
+  {
+    hungerQuery.each([](flecs::entity entity, Hunger &hunger)
+    {
+      hunger.current += 1;
+      if (hunger.current > hunger.max)
+        debug("%s is hungry", entity.name().c_str());
     });
   });
 

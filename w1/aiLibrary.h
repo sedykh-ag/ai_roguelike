@@ -7,6 +7,9 @@ StateMachine *create_state_machine();
 
 // states
 State *create_sm_state(StateMachine *sm);
+State *create_go_to_state(int x, int y);
+State *create_eat_state();
+State *create_sleep_state();
 State *create_attack_enemy_state();
 State *create_move_to_enemy_state();
 State *create_move_to_player_state();
@@ -17,6 +20,8 @@ State *create_nop_state();
 State *create_spawn_slime_state();
 
 // transitions
+StateTransition *create_hunger_more_than_transition(int threshold);
+StateTransition *create_fatigue_more_than_transition(int threshold);
 StateTransition *create_enemy_available_transition(float dist);
 StateTransition *create_enemy_reachable_transition();
 StateTransition *create_ally_available_transition(float dist);
@@ -25,6 +30,7 @@ StateTransition *create_player_hitpoints_less_than_transition(float thres);
 StateTransition *create_negate_transition(StateTransition *in);
 StateTransition *create_and_transition(StateTransition *lhs, StateTransition *rhs);
 StateTransition *create_always_transition();
+StateTransition *create_dist_to_pos_transition(float dist, int x, int y);
 
 // helpers
 template<typename T>
